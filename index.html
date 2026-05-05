@@ -61,6 +61,8 @@
     <div class="autocomplete-list" id="autocomplete-list"></div>
   </div>
   <button id="submit-btn" onclick="submitGuess()">Submit</button>
+  <button id="give-up-btn" onclick="giveUp()">投降</button>
+  <a href="https://prts.wiki/w/%E5%B9%B2%E5%91%98%E4%B8%80%E8%A7%88" target="_blank" rel="noopener" style="padding:10px 20px;font-size:16px;color:#e94560;text-decoration:none;">作弊链接(≖＿≖)✧</a>
 </div>
 <table class="result-table" id="result-table">
   <thead id="table-head"></thead>
@@ -125,6 +127,7 @@ function startNewGame() {
   document.getElementById("submit-btn").disabled = false;
   document.getElementById("guess-input").disabled = false;
   document.getElementById("guess-input").value = "";
+  document.getElementById("give-up-btn").disabled = false;
   document.getElementById("guess-input").focus();
   updateRemaining();
 }
@@ -197,6 +200,7 @@ function submitGuess() {
     document.getElementById("success-banner").style.display = "block";
     document.getElementById("next-btn").style.display = "inline-block";
     document.getElementById("submit-btn").disabled = true;
+    document.getElementById("give-up-btn").disabled = true;
     input.disabled = true;
   } else if (remainingGuesses <= 0) {
     // Show answer row
@@ -213,8 +217,28 @@ function submitGuess() {
     document.getElementById("fail-banner").style.display = "block";
     document.getElementById("next-btn").style.display = "inline-block";
     document.getElementById("submit-btn").disabled = true;
+    document.getElementById("give-up-btn").disabled = true;
     input.disabled = true;
   }
+}
+
+function giveUp() {
+  const tbody = document.getElementById("table-body");
+  const answerTr = document.createElement("tr");
+  answerTr.className = "answer-row";
+  HEADERS.forEach(h => {
+    const td = document.createElement("td");
+    const val = h === "data-rarity" ? String(Number(target[h] || 0) + 1) : (target[h] || "-");
+    td.textContent = val;
+    answerTr.appendChild(td);
+  });
+  tbody.insertBefore(answerTr, tbody.firstChild);
+  document.getElementById("answer-name").textContent = target["data-zh"];
+  document.getElementById("fail-banner").style.display = "block";
+  document.getElementById("next-btn").style.display = "inline-block";
+  document.getElementById("submit-btn").disabled = true;
+  document.getElementById("give-up-btn").disabled = true;
+  document.getElementById("guess-input").disabled = true;
 }
 
 // Autocomplete
