@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>猜干员</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 30px 10px; }
+  h1 { margin-bottom: 20px; }
+  .input-area { display: flex; gap: 10px; margin-bottom: 20px; position: relative; }
+  input { padding: 10px 14px; font-size: 16px; border: 2px solid #444; border-radius: 6px; background: #16213e; color: #eee; width: 260px; }
+  button { padding: 10px 20px; font-size: 16px; border: none; border-radius: 6px; cursor: pointer; background: #0f3460; color: #eee; transition: background .2s; }
+  button:hover { background: #e94560; }
+  button:disabled { opacity: .5; cursor: default; }
+  .autocomplete-list { position: absolute; top: 100%; left: 0; width: 260px; max-height: 200px; overflow-y: auto; background: #16213e; border: 1px solid #444; border-radius: 0 0 6px 6px; z-index: 10; display: none; }
+  .autocomplete-list div { padding: 8px 14px; cursor: pointer; }
+  .autocomplete-list div:hover, .autocomplete-list div.active { background: #0f3460; }
+  .result-table { width: 100%; max-width: 1100px; border-collapse: collapse; margin-top: 10px; }
+  .result-table th, .result-table td { border: 1px solid #333; padding: 8px 10px; text-align: center; font-size: 14px; }
+  .result-table th { background: #0f3460; position: sticky; top: 0; }
+  .result-table td.match, .result-table .match { color: #00e676; font-weight: bold; }
+  .result-table td.no-match, .result-table .no-match { color: #999; }
+  .result-table td.near { color: #ffd600; font-weight: bold; }
+  .success-banner { font-size: 24px; color: #00e676; font-weight: bold; margin: 16px 0; display: none; }
+  #next-btn { display: none; margin-bottom: 10px; background: #e94560; }
+  .difficulty-area { margin-bottom: 16px; display: flex; gap: 10px; align-items: center; }
+  .difficulty-area label { font-size: 15px; }
+  .difficulty-area select { padding: 8px 12px; font-size: 15px; border: 2px solid #444; border-radius: 6px; background: #16213e; color: #eee; }
+  #remaining { margin-bottom: 12px; font-size: 16px; color: #ccc; }
+  .fail-banner { font-size: 24px; color: #e94560; font-weight: bold; margin: 16px 0; display: none; }
+  .answer-row td { color: #e94560 !important; font-weight: bold; }
+  .legend { margin-bottom: 16px; font-size: 13px; color: #aaa; text-align: center; line-height: 1.8; }
+  .legend span { font-weight: bold; padding: 2px 6px; border-radius: 3px; }
+  .legend .g { color: #00e676; }
+  .legend .y { color: #ffd600; }
+  .legend .b { color: #999; }
+</style>
+</head>
+<body>
+<h1>猜干员</h1>
+<div class="difficulty-area">
+  <label>难度：</label>
+  <select id="difficulty" onchange="startNewGame()">
+    <option value="10">低难 (10次)</option>
+    <option value="5">高难 (5次)</option>
+  </select>
+</div>
+<div class="legend">
+  <span class="g">绿色</span> = 与答案一致 &nbsp;|&nbsp;
+  <span class="y">黄色 ↑↓</span> = 数值接近（差≤2），↑ 答案更大，↓ 答案更小 &nbsp;|&nbsp;
+  <span class="b">灰色</span> = 不一致
+</div>
+<div id="remaining"></div>
+<div class="success-banner" id="success-banner">猜对了！</div>
+<div class="fail-banner" id="fail-banner">次数用尽！答案是：<span id="answer-name"></span></div>
+<button id="next-btn" onclick="startNewGame()">下一局</button>
+<div class="input-area">
+  <div style="position:relative">
+    <input id="guess-input" type="text" placeholder="输入干员名..." autocomplete="off">
+    <div class="autocomplete-list" id="autocomplete-list"></div>
+  </div>
+  <button id="submit-btn" onclick="submitGuess()">Submit</button>
+</div>
+<table class="result-table" id="result-table">
+  <thead id="table-head"></thead>
+  <tbody id="table-body"></tbody>
+</table>
+
+<script>
+const HEADERS = ["data-zh","data-profession","data-rarity","data-logo","data-birth_place","data-race","data-block","data-sex","data-position","data-obtain_method","data-subprofession"];
+const DISPLAY = ["名字","职业","星级","阵营","出生地","种族","阻挡数","性别","位置","获取方式","子职业"];
+
+let allRows = [];
+let target = null;
+let guessed = new Set();
+let maxGuesses = 10;
+let remainingGuesses = 10;
+
+function parseCSV(text) {
+  const lines = text.trim().split("\n");
+  const header = parseCSVLine(lines[0]);
+  return lines.slice(1).map(line => {
+    const vals = parseCSVLine(line);
+    const obj = {};
+    header.forEach((h, i) => obj[h] = (vals[i] || "").trim());
+    return obj;
+  });
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let cur = "", inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') inQuotes = false;
+      else cur += ch;
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === ',') { result.push(cur); cur = ""; }
+      else cur += ch;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+function renderHeader() {
+  const tr = document.createElement("tr");
+  DISPLAY.forEach(h => { const th = document.createElement("th"); th.textContent = h; tr.appendChild(th); });
+  document.getElementById("table-head").appendChild(tr);
+}
+
+function startNewGame() {
+  target = allRows[Math.floor(Math.random() * allRows.length)];
+  guessed.clear();
+  maxGuesses = Number(document.getElementById("difficulty").value);
+  remainingGuesses = maxGuesses;
+  document.getElementById("table-body").innerHTML = "";
+  document.getElementById("success-banner").style.display = "none";
+  document.getElementById("fail-banner").style.display = "none";
+  document.getElementById("next-btn").style.display = "none";
+  document.getElementById("submit-btn").disabled = false;
+  document.getElementById("guess-input").disabled = false;
+  document.getElementById("guess-input").value = "";
+  document.getElementById("guess-input").focus();
+  updateRemaining();
+}
+
+function updateRemaining() {
+  document.getElementById("remaining").textContent = `剩余次数：${remainingGuesses} / ${maxGuesses}`;
+}
+
+function submitGuess() {
+  const input = document.getElementById("guess-input");
+  const name = input.value.trim();
+  if (!name) return;
+
+  const row = allRows.find(r => r["data-zh"] === name);
+  if (!row) { alert("未找到该干员，请重新输入"); return; }
+  if (guessed.has(name)) { alert("已经猜过了"); return; }
+
+  guessed.add(name);
+  input.value = "";
+  hideAutocomplete();
+
+  const tbody = document.getElementById("table-body");
+  const tr = document.createElement("tr");
+
+  const isCorrect = name === target["data-zh"];
+
+  const NUMERIC_COLS = new Set(["data-rarity", "data-block"]);
+  HEADERS.forEach(h => {
+    const td = document.createElement("td");
+    const display = h === "data-rarity" ? String(Number(row[h] || 0) + 1) : (row[h] || "-");
+
+    if (row[h] === target[h]) {
+      td.textContent = display;
+      td.className = "match";
+    } else if (NUMERIC_COLS.has(h)) {
+      const guessVal = Number(row[h] || 0);
+      const targetVal = Number(target[h] || 0);
+      const diff = Math.abs(guessVal - targetVal);
+      if (diff <= 2) {
+        const arrow = guessVal > targetVal ? " ↓" : " ↑";
+        td.textContent = display + arrow;
+        td.className = "near";
+      } else {
+        td.textContent = display;
+        td.className = "no-match";
+      }
+    } else if (h === "data-obtain_method") {
+      const guessParts = (row[h] || "").split(",").map(s => s.trim()).filter(Boolean);
+      const targetParts = new Set((target[h] || "").split(",").map(s => s.trim()));
+      guessParts.forEach((part, i) => {
+        if (i > 0) td.appendChild(document.createTextNode(", "));
+        const span = document.createElement("span");
+        span.textContent = part;
+        span.className = targetParts.has(part) ? "match" : "no-match";
+        td.appendChild(span);
+      });
+    } else {
+      td.textContent = display;
+      td.className = "no-match";
+    }
+    tr.appendChild(td);
+  });
+
+  tbody.insertBefore(tr, tbody.firstChild);
+
+  remainingGuesses--;
+  updateRemaining();
+
+  if (isCorrect) {
+    document.getElementById("success-banner").style.display = "block";
+    document.getElementById("next-btn").style.display = "inline-block";
+    document.getElementById("submit-btn").disabled = true;
+    input.disabled = true;
+  } else if (remainingGuesses <= 0) {
+    // Show answer row
+    const answerTr = document.createElement("tr");
+    answerTr.className = "answer-row";
+    HEADERS.forEach(h => {
+      const td = document.createElement("td");
+      const val = h === "data-rarity" ? String(Number(target[h] || 0) + 1) : (target[h] || "-");
+      td.textContent = val;
+      answerTr.appendChild(td);
+    });
+    tbody.insertBefore(answerTr, tbody.firstChild);
+    document.getElementById("answer-name").textContent = target["data-zh"];
+    document.getElementById("fail-banner").style.display = "block";
+    document.getElementById("next-btn").style.display = "inline-block";
+    document.getElementById("submit-btn").disabled = true;
+    input.disabled = true;
+  }
+}
+
+// Autocomplete
+const input = document.getElementById("guess-input");
+const listEl = document.getElementById("autocomplete-list");
+let acIndex = -1;
+
+input.addEventListener("input", () => {
+  const val = input.value.trim().toLowerCase();
+  if (!val) { hideAutocomplete(); return; }
+  const matches = allRows.map(r => r["data-zh"]).filter(n => n.toLowerCase().includes(val)).slice(0, 10);
+  if (!matches.length) { hideAutocomplete(); return; }
+  listEl.innerHTML = "";
+  acIndex = -1;
+  matches.forEach(m => {
+    const div = document.createElement("div");
+    div.textContent = m;
+    div.addEventListener("mousedown", e => { e.preventDefault(); input.value = m; hideAutocomplete(); });
+    listEl.appendChild(div);
+  });
+  listEl.style.display = "block";
+});
+
+input.addEventListener("keydown", e => {
+  const items = listEl.querySelectorAll("div");
+  if (!items.length) {
+    if (e.key === "Enter") submitGuess();
+    return;
+  }
+  if (e.key === "ArrowDown") { e.preventDefault(); acIndex = Math.min(acIndex + 1, items.length - 1); updateAC(items); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); acIndex = Math.max(acIndex - 1, 0); updateAC(items); }
+  else if (e.key === "Enter") { e.preventDefault(); if (acIndex >= 0) { input.value = items[acIndex].textContent; hideAutocomplete(); } else { submitGuess(); } }
+  else if (e.key === "Escape") hideAutocomplete();
+});
+
+function updateAC(items) { items.forEach((el, i) => el.classList.toggle("active", i === acIndex)); }
+function hideAutocomplete() { listEl.style.display = "none"; acIndex = -1; }
+input.addEventListener("blur", () => setTimeout(hideAutocomplete, 150));
+
+// Init
+fetch("output.csv")
+  .then(r => r.text())
+  .then(text => {
+    allRows = parseCSV(text);
+    renderHeader();
+    startNewGame();
+  });
+</script>
+</body>
+</html>
