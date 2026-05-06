@@ -24,8 +24,9 @@
   .result-table td.near { color: #ffd600; font-weight: bold; }
   .success-banner { font-size: 24px; color: #00e676; font-weight: bold; margin: 16px 0; display: none; }
   #next-btn { display: none; margin-bottom: 10px; background: #e94560; }
-  .difficulty-area { margin-bottom: 16px; display: flex; gap: 10px; align-items: center; }
-  .difficulty-area label { font-size: 15px; }
+  .difficulty-area { margin-bottom: 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; }
+  .difficulty-area label { font-size: 15px; display: inline-flex; align-items: center; gap: 0; }
+  #six-star-only { margin: 0 2px 0 0; width: 16px; height: 16px; }
   .difficulty-area select { padding: 8px 12px; font-size: 15px; border: 2px solid #444; border-radius: 6px; background: #16213e; color: #eee; }
   #remaining { margin-bottom: 12px; font-size: 16px; color: #ccc; }
   .fail-banner { font-size: 24px; color: #e94560; font-weight: bold; margin: 16px 0; display: none; }
@@ -36,6 +37,8 @@
   .legend .y { color: #ffd600; }
   .legend .b { color: #999; }
   @media (max-width: 600px) {
+    .difficulty-area { gap: 6px; }
+    .difficulty-area label, .difficulty-area select { font-size: 14px; }
     .input-area { width: 100%; max-width: 360px; }
     .input-area > div { width: 100%; }
     .input-area input { width: 100%; }
@@ -54,6 +57,7 @@
     <option value="10">低难 (10次)</option>
     <option value="5">高难 (5次)</option>
   </select>
+  <label><input type="checkbox" id="six-star-only" onchange="startNewGame()">仅限六星</label>
 </div>
 <div class="legend">
   <span class="g">绿色</span> = 与答案一致 &nbsp;|&nbsp;
@@ -125,7 +129,8 @@ function renderHeader() {
 }
 
 function startNewGame() {
-  target = allRows[Math.floor(Math.random() * allRows.length)];
+  const pool = document.getElementById("six-star-only").checked ? allRows.filter(r => r["data-rarity"] === "5") : allRows;
+  target = pool[Math.floor(Math.random() * pool.length)];
   guessed.clear();
   maxGuesses = Number(document.getElementById("difficulty").value);
   remainingGuesses = maxGuesses;
